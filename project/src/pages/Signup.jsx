@@ -7,7 +7,6 @@ const Signup = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("student");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { signup } = useAuth();
@@ -25,12 +24,11 @@ const Signup = () => {
     setLoading(true);
 
     try {
+      // Always set role to "student" by default for new signups
+      // Admin permissions will be granted from the database
+      const role = "student";
       await signup(email, password, name, role);
-      if (role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/student");
-      }
+      navigate("/student");
     } catch (err) {
       // Surface exact error code in console to diagnose issues like invalid-api-key or permission-denied
       // eslint-disable-next-line no-console
@@ -125,36 +123,6 @@ const Signup = () => {
               <p className="text-xs text-gray-500 mt-1">
                 Must be at least 6 characters
               </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                I am a
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setRole("student")}
-                  className={`py-3 px-4 rounded-lg border-2 transition ${
-                    role === "student"
-                      ? "border-blue-600 bg-blue-50 text-blue-600"
-                      : "border-gray-300 text-gray-700 hover:border-blue-300"
-                  }`}
-                >
-                  Student
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("admin")}
-                  className={`py-3 px-4 rounded-lg border-2 transition ${
-                    role === "admin"
-                      ? "border-blue-600 bg-blue-50 text-blue-600"
-                      : "border-gray-300 text-gray-700 hover:border-blue-300"
-                  }`}
-                >
-                  Admin
-                </button>
-              </div>
             </div>
 
             <button
