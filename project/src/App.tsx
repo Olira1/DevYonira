@@ -1,19 +1,23 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import Navbar from './components/Navbar';
-import Footer from './components/Footer';
-import ProtectedRoute from './components/ProtectedRoute';
-import Home from './pages/Home';
-import About from './pages/About';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import StudentDashboard from './pages/StudentDashboard';
-import StudentMaterials from './pages/StudentMaterials';
-import StudentProgress from './pages/StudentProgress';
-import AdminDashboard from './pages/AdminDashboard';
-import AdminVerify from './pages/AdminVerify';
-import AdminMaterials from './pages/AdminMaterials';
-import AdminStudents from './pages/AdminStudents';
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Home from "./pages/Home";
+import About from "./pages/About";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import StudentDashboard from "./pages/StudentDashboard";
+import StudentMaterials from "./pages/StudentMaterials";
+import StudentPhaseDetail from "./pages/StudentPhaseDetail";
+import StudentWeekDetail from "./pages/StudentWeekDetail";
+import StudentProgress from "./pages/StudentProgress";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminVerify from "./pages/AdminVerify";
+import AdminMaterials from "./pages/AdminMaterials";
+import AdminPhaseDetail from "./pages/AdminPhaseDetail";
+import AdminWeekDetail from "./pages/AdminWeekDetail";
+import AdminStudents from "./pages/AdminStudents";
 
 function App() {
   return (
@@ -41,6 +45,22 @@ function App() {
                 element={
                   <ProtectedRoute requiredRole="student">
                     <StudentMaterials />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/student/materials/phase/:phaseId"
+                element={
+                  <ProtectedRoute requiredRole="student">
+                    <StudentPhaseDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/student/materials/week/:weekId"
+                element={
+                  <ProtectedRoute requiredRole="student">
+                    <StudentWeekDetail />
                   </ProtectedRoute>
                 }
               />
@@ -74,6 +94,22 @@ function App() {
                 element={
                   <ProtectedRoute requiredRole="admin">
                     <AdminMaterials />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/materials/phase/:phaseId"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <AdminPhaseDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/materials/week/:weekId"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <AdminWeekDetail />
                   </ProtectedRoute>
                 }
               />

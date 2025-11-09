@@ -1,34 +1,51 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { doc, getDoc, collection, query, orderBy, getDocs, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/firebaseConfig';
-import { LayoutDashboard, BookOpen, TrendingUp, ExternalLink, Lock } from 'lucide-react';
-import Sidebar from '../components/Sidebar';
+import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import {
+  doc,
+  getDoc,
+  collection,
+  query,
+  orderBy,
+  getDocs,
+} from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
+import {
+  LayoutDashboard,
+  BookOpen,
+  TrendingUp,
+  Lock,
+  Folder,
+  ChevronRight,
+} from "lucide-react";
+import Sidebar from "../components/Sidebar";
+import { useNavigate } from "react-router-dom";
 
 const StudentMaterials = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [userData, setUserData] = useState(null);
-  const [materials, setMaterials] = useState([]);
+  const [phases, setPhases] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userDoc = await getDoc(doc(db, "users", user.uid));
         if (userDoc.exists()) {
           setUserData(userDoc.data());
         }
 
-        const materialsQuery = query(
-          collection(db, 'materials'),
-          orderBy('releaseDate', 'desc')
+        // Fetch phases
+        const phasesQuery = query(
+          collection(db, "phases"),
+          orderBy("order", "asc")
         );
-        const materialsSnapshot = await getDocs(materialsQuery);
-        const materialsData = materialsSnapshot.docs.map((doc) => ({
+        const phasesSnapshot = await getDocs(phasesQuery);
+        const phasesData = phasesSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
-        setMaterials(materialsData);
+        setPhases(phasesData);
       }
       setLoading(false);
     };
@@ -36,34 +53,20 @@ const StudentMaterials = () => {
     fetchData();
   }, [user]);
 
-  const handleMaterialClick = async (materialId) => {
-    if (userData && userData.verified) {
-      const currentProgress = userData.progress || 0;
-      const increment = Math.floor(100 / materials.length);
-      const newProgress = Math.min(currentProgress + increment, 100);
-
-      await updateDoc(doc(db, 'users', user.uid), {
-        progress: newProgress,
-      });
-
-      setUserData({ ...userData, progress: newProgress });
-    }
-  };
-
   const sidebarLinks = [
     {
-      path: '/student',
-      label: 'Dashboard',
+      path: "/student",
+      label: "Dashboard",
       icon: <LayoutDashboard className="h-5 w-5" />,
     },
     {
-      path: '/student/materials',
-      label: 'My Materials',
+      path: "/student/materials",
+      label: "My Materials",
       icon: <BookOpen className="h-5 w-5" />,
     },
     {
-      path: '/student/progress',
-      label: 'Progress',
+      path: "/student/progress",
+      label: "Progress",
       icon: <TrendingUp className="h-5 w-5" />,
     },
   ];
@@ -83,9 +86,13 @@ const StudentMaterials = () => {
       <Sidebar links={sidebarLinks} />
 
       <div className="flex-1 p-8">
-        <div className="max-w-5xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Course Materials</h1>
-          <p className="text-gray-600 mb-8">Access all your learning resources</p>
+        <div className="max-w-6xl mx-auto">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Course Materials
+          </h1>
+          <p className="text-gray-600 mb-8">
+            Access all your learning resources
+          </p>
 
           {!userData?.verified ? (
             <div className="bg-white rounded-xl shadow-md p-8 text-center">
@@ -105,48 +112,37 @@ const StudentMaterials = () => {
                 Go to Dashboard
               </a>
             </div>
-          ) : materials.length === 0 ? (
+          ) : phases.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <BookOpen className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <Folder className="h-16 w-16 text-gray-400 mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                No Materials Yet
+                No Phases Yet
               </h2>
               <p className="text-gray-600">
-                Materials will appear here once the admin releases them.
+                Phases will appear here once the admin creates them.
               </p>
             </div>
           ) : (
             <div className="space-y-6">
-              {materials.map((material) => (
+              {phases.map((phase) => (
                 <div
-                  key={material.id}
-                  className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition"
+                  key={phase.id}
+                  className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition cursor-pointer"
+                  onClick={() =>
+                    navigate(`/student/materials/phase/${phase.id}`)
+                  }
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full">
-                          {material.phase}
-                        </span>
+                      <div className="flex items-center space-x-3 mb-2">
+                        <Folder className="h-6 w-6 text-blue-600" />
+                        <h3 className="text-xl font-bold text-gray-900">
+                          {phase.title}
+                        </h3>
                       </div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">
-                        {material.title}
-                      </h3>
-                      <p className="text-gray-600 mb-4">{material.description}</p>
-                      <p className="text-sm text-gray-500">
-                        Released: {new Date(material.releaseDate).toLocaleDateString()}
-                      </p>
+                      <p className="text-gray-600 mb-2">{phase.description}</p>
                     </div>
-                    <a
-                      href={material.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => handleMaterialClick(material.id)}
-                      className="ml-4 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
-                    >
-                      <span>View</span>
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
+                    <ChevronRight className="h-6 w-6 text-gray-400" />
                   </div>
                 </div>
               ))}
