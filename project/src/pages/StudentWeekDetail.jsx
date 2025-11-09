@@ -51,20 +51,50 @@ const StudentWeekDetail = () => {
       }
 
       // Fetch only released resources for this week
-      const resourcesQuery = query(
-        collection(db, "resources"),
-        where("weekId", "==", weekId),
-        where("isReleased", "==", true),
-        orderBy("order", "asc")
-      );
-      const resourcesSnapshot = await getDocs(resourcesQuery);
+      // Try with orderBy first, fallback to without if index is missing
+      let resourcesSnapshot;
+      try {
+        const resourcesQuery = query(
+          collection(db, "resources"),
+          where("weekId", "==", weekId),
+          where("isReleased", "==", true),
+          orderBy("order", "asc")
+        );
+        resourcesSnapshot = await getDocs(resourcesQuery);
+      } catch (indexError) {
+        // If composite index is missing, fetch without orderBy and sort in memory
+        console.warn("Composite index missing, fetching without orderBy:", indexError);
+        const resourcesQuery = query(
+          collection(db, "resources"),
+          where("weekId", "==", weekId),
+          where("isReleased", "==", true)
+        );
+        resourcesSnapshot = await getDocs(resourcesQuery);
+      }
+      
       const resourcesData = resourcesSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
+      
+      // Sort by order if not already sorted
+      resourcesData.sort((a, b) => (a.order || 0) - (b.order || 0));
+      
+      console.log("📚 Student Resources Fetched:", {
+        weekId: weekId,
+        totalResources: resourcesData.length,
+        resources: resourcesData.map(r => ({
+          id: r.id,
+          title: r.title,
+          isReleased: r.isReleased,
+          topic: r.topic
+        }))
+      });
+      
       setResources(resourcesData);
     } catch (error) {
       console.error("Error fetching data:", error);
+      alert(`Error fetching data: ${error.message}`);
     } finally {
       setLoading(false);
     }

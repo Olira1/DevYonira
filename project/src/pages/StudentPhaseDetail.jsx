@@ -40,19 +40,47 @@ const StudentPhaseDetail = () => {
       }
 
       // Fetch weeks for this phase
-      const weeksQuery = query(
-        collection(db, "weeks"),
-        where("phaseId", "==", phaseId),
-        orderBy("order", "asc")
-      );
-      const weeksSnapshot = await getDocs(weeksQuery);
+      // Try with orderBy first, fallback to without if index is missing
+      let weeksSnapshot;
+      try {
+        const weeksQuery = query(
+          collection(db, "weeks"),
+          where("phaseId", "==", phaseId),
+          orderBy("order", "asc")
+        );
+        weeksSnapshot = await getDocs(weeksQuery);
+      } catch (indexError) {
+        // If composite index is missing, fetch without orderBy and sort in memory
+        console.warn("Composite index missing, fetching without orderBy:", indexError);
+        const weeksQuery = query(
+          collection(db, "weeks"),
+          where("phaseId", "==", phaseId)
+        );
+        weeksSnapshot = await getDocs(weeksQuery);
+      }
+      
       const weeksData = weeksSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
+      
+      // Sort by order if not already sorted
+      weeksData.sort((a, b) => (a.order || 0) - (b.order || 0));
+      
+      console.log("📅 Student Weeks Fetched:", {
+        phaseId: phaseId,
+        totalWeeks: weeksData.length,
+        weeks: weeksData.map(w => ({
+          id: w.id,
+          title: w.title,
+          order: w.order
+        }))
+      });
+      
       setWeeks(weeksData);
     } catch (error) {
       console.error("Error fetching data:", error);
+      alert(`Error fetching data: ${error.message}`);
     } finally {
       setLoading(false);
     }

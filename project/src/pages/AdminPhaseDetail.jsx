@@ -52,19 +52,36 @@ const AdminPhaseDetail = () => {
       }
 
       // Fetch weeks for this phase
-      const weeksQuery = query(
-        collection(db, "weeks"),
-        where("phaseId", "==", phaseId),
-        orderBy("order", "asc")
-      );
-      const weeksSnapshot = await getDocs(weeksQuery);
+      // Try with orderBy first, fallback to without if index is missing
+      let weeksSnapshot;
+      try {
+        const weeksQuery = query(
+          collection(db, "weeks"),
+          where("phaseId", "==", phaseId),
+          orderBy("order", "asc")
+        );
+        weeksSnapshot = await getDocs(weeksQuery);
+      } catch (indexError) {
+        // If composite index is missing, fetch without orderBy and sort in memory
+        console.warn("Composite index missing, fetching without orderBy:", indexError);
+        const weeksQuery = query(
+          collection(db, "weeks"),
+          where("phaseId", "==", phaseId)
+        );
+        weeksSnapshot = await getDocs(weeksQuery);
+      }
+      
       const weeksData = weeksSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
+      
+      // Sort by order if not already sorted
+      weeksData.sort((a, b) => (a.order || 0) - (b.order || 0));
       setWeeks(weeksData);
     } catch (error) {
       console.error("Error fetching data:", error);
+      alert(`Error fetching data: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -75,8 +92,13 @@ const AdminPhaseDetail = () => {
     setSubmitting(true);
 
     try {
+      // Ensure order is a valid number
+      const orderValue = parseInt(weekFormData.order) || weeks.length + 1;
+      
       await addDoc(collection(db, "weeks"), {
-        ...weekFormData,
+        title: weekFormData.title,
+        description: weekFormData.description,
+        order: orderValue,
         phaseId: phaseId,
         createdAt: new Date().toISOString(),
       });
@@ -91,7 +113,7 @@ const AdminPhaseDetail = () => {
       alert("Week created successfully!");
     } catch (error) {
       console.error("Error creating week:", error);
-      alert("Failed to create week");
+      alert(`Failed to create week: ${error.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -265,12 +287,14 @@ const AdminPhaseDetail = () => {
                   <input
                     type="number"
                     value={weekFormData.order}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const numValue = value === "" ? weeks.length + 1 : parseInt(value);
                       setWeekFormData({
                         ...weekFormData,
-                        order: parseInt(e.target.value),
-                      })
-                    }
+                        order: isNaN(numValue) ? weeks.length + 1 : numValue,
+                      });
+                    }}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     min="1"
                     required

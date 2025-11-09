@@ -12,13 +12,8 @@ import {
   where,
   updateDoc,
 } from "firebase/firestore";
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
-import { db, storage } from "../firebase/firebaseConfig";
+import { db } from "../firebase/firebaseConfig";
+import { uploadToCloudinary, deleteFromCloudinary, extractPublicIdFromUrl } from "../cloudinary/cloudinaryUtils";
 import {
   LayoutDashboard,
   Users,
@@ -55,6 +50,7 @@ const AdminWeekDetail = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
     fetchData();
@@ -78,19 +74,36 @@ const AdminWeekDetail = () => {
       }
 
       // Fetch resources for this week
-      const resourcesQuery = query(
-        collection(db, "resources"),
-        where("weekId", "==", weekId),
-        orderBy("order", "asc")
-      );
-      const resourcesSnapshot = await getDocs(resourcesQuery);
+      // Try with orderBy first, fallback to without if index is missing
+      let resourcesSnapshot;
+      try {
+        const resourcesQuery = query(
+          collection(db, "resources"),
+          where("weekId", "==", weekId),
+          orderBy("order", "asc")
+        );
+        resourcesSnapshot = await getDocs(resourcesQuery);
+      } catch (indexError) {
+        // If composite index is missing, fetch without orderBy and sort in memory
+        console.warn("Composite index missing, fetching without orderBy:", indexError);
+        const resourcesQuery = query(
+          collection(db, "resources"),
+          where("weekId", "==", weekId)
+        );
+        resourcesSnapshot = await getDocs(resourcesQuery);
+      }
+      
       const resourcesData = resourcesSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
+      
+      // Sort by order if not already sorted
+      resourcesData.sort((a, b) => (a.order || 0) - (b.order || 0));
       setResources(resourcesData);
     } catch (error) {
       console.error("Error fetching data:", error);
+      alert(`Error fetching data: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -122,46 +135,89 @@ const AdminWeekDetail = () => {
 
     try {
       let resourceUrl = resourceFormData.url;
-      let filePath = "";
+      let publicId = "";
 
       // Upload file if it's a class note (PDF)
-      if (resourceFormData.topic === "classNotes" && resourceFormData.file) {
-        setUploading(true);
-        const fileRef = ref(
-          storage,
-          `resources/${weekId}/${resourceFormData.file.name}`
-        );
-        const snapshot = await uploadBytes(fileRef, resourceFormData.file);
-        resourceUrl = await getDownloadURL(snapshot.ref);
-        filePath = snapshot.ref.fullPath;
-        setUploading(false);
+      if (resourceFormData.topic === "classNotes") {
+        if (!resourceFormData.file && !resourceFormData.url) {
+          throw new Error("Please either upload a PDF file or provide a URL");
+        }
+        
+        if (resourceFormData.file) {
+          setUploading(true);
+          setUploadProgress(0);
+          
+          try {
+            // Validate file type
+            if (resourceFormData.file.type !== "application/pdf") {
+              throw new Error("Only PDF files are allowed");
+            }
+            
+            // Create folder path: resources/week-{weekId}
+            const folder = `resources/week-${weekId}`;
+            
+            console.log("Uploading file to Cloudinary...", {
+              fileName: resourceFormData.file.name,
+              fileSize: resourceFormData.file.size,
+              folder: folder
+            });
+            
+            // Upload to Cloudinary
+            const uploadResult = await uploadToCloudinary(
+              resourceFormData.file,
+              folder,
+              {
+                // Additional options can be added here
+                // e.g., transformation: { quality: "auto" }
+              }
+            );
+            
+            console.log("Upload successful:", uploadResult);
+            resourceUrl = uploadResult.url;
+            publicId = uploadResult.publicId;
+            setUploadProgress(100);
+          } catch (uploadError) {
+            console.error("Cloudinary upload error:", uploadError);
+            throw new Error(`Failed to upload file: ${uploadError.message}`);
+          } finally {
+            setUploading(false);
+          }
+        }
       }
 
       const resourceData = {
         title: resourceFormData.title,
         topic: resourceFormData.topic,
         url: resourceUrl,
-        filePath: filePath,
+        publicId: publicId || (editingResource?.publicId || ""), // Keep existing publicId if not uploading new file
         weekId: weekId,
         order: Number(resourceFormData.order),
-        isReleased: resourceFormData.isReleased,
+        isReleased: Boolean(resourceFormData.isReleased), // Ensure it's a boolean
         createdAt: editingResource
           ? editingResource.createdAt
           : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
+      console.log("💾 Saving resource:", {
+        title: resourceData.title,
+        isReleased: resourceData.isReleased,
+        weekId: resourceData.weekId
+      });
+
       if (editingResource) {
-        // Delete old file if new file is uploaded
+        // Delete old file from Cloudinary if new file is uploaded
         if (
           resourceFormData.file &&
-          editingResource.filePath &&
+          editingResource.publicId &&
           resourceFormData.topic === "classNotes"
         ) {
-          const oldFileRef = ref(storage, editingResource.filePath);
-          await deleteObject(oldFileRef).catch((error) =>
-            console.warn("Old file not found:", error)
-          );
+          try {
+            await deleteFromCloudinary(editingResource.publicId, "raw");
+          } catch (deleteError) {
+            console.warn("Failed to delete old file from Cloudinary:", deleteError);
+            // Continue even if deletion fails
+          }
         }
         await updateDoc(doc(db, "resources", editingResource.id), resourceData);
       } else {
@@ -186,7 +242,8 @@ const AdminWeekDetail = () => {
       );
     } catch (error) {
       console.error("Error saving resource:", error);
-      alert("Failed to save resource");
+      const errorMessage = error.message || "Unknown error occurred";
+      alert(`Failed to save resource: ${errorMessage}`);
     } finally {
       setSubmitting(false);
       setUploading(false);
@@ -206,15 +263,17 @@ const AdminWeekDetail = () => {
     setShowResourceForm(true);
   };
 
-  const handleDeleteResource = async (resourceId, filePath) => {
+  const handleDeleteResource = async (resourceId, publicId) => {
     if (window.confirm("Are you sure you want to delete this resource?")) {
       try {
-        // Delete file from storage if it exists
-        if (filePath) {
-          const fileRef = ref(storage, filePath);
-          await deleteObject(fileRef).catch((error) =>
-            console.warn("File not found:", error)
-          );
+        // Delete file from Cloudinary if it exists
+        if (publicId) {
+          try {
+            await deleteFromCloudinary(publicId, "raw");
+          } catch (deleteError) {
+            console.warn("Failed to delete file from Cloudinary:", deleteError);
+            // Continue even if deletion fails
+          }
         }
 
         await deleteDoc(doc(db, "resources", resourceId));
@@ -394,9 +453,19 @@ const AdminWeekDetail = () => {
                       required={!editingResource || !resourceFormData.url}
                     />
                     {uploading && (
-                      <p className="text-blue-600 text-sm mt-2">
-                        Uploading file...
-                      </p>
+                      <div className="mt-2">
+                        <p className="text-blue-600 text-sm mb-1">
+                          Uploading file to Cloudinary...
+                        </p>
+                        {uploadProgress > 0 && (
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${uploadProgress}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
                     )}
                     {editingResource && editingResource.url && (
                       <p className="text-gray-500 text-sm mt-2">
@@ -575,7 +644,7 @@ const AdminWeekDetail = () => {
                             onClick={() =>
                               handleDeleteResource(
                                 resource.id,
-                                resource.filePath
+                                resource.publicId || extractPublicIdFromUrl(resource.url)
                               )
                             }
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
@@ -673,7 +742,7 @@ const AdminWeekDetail = () => {
                             onClick={() =>
                               handleDeleteResource(
                                 resource.id,
-                                resource.filePath
+                                resource.publicId || extractPublicIdFromUrl(resource.url)
                               )
                             }
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
