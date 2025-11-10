@@ -18,6 +18,7 @@ import AdminMaterials from "./pages/AdminMaterials";
 import AdminPhaseDetail from "./pages/AdminPhaseDetail";
 import AdminWeekDetail from "./pages/AdminWeekDetail";
 import AdminStudents from "./pages/AdminStudents";
+import NotFound from "./pages/NotFound";
 
 function App() {
   return (
@@ -121,6 +122,9 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              
+              {/* Catch-all route for 404 pages */}
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
           <Footer />
